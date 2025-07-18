@@ -1,5 +1,7 @@
+from gettext import install
 from pymongo import MongoClient
 from urllib.parse import quote_plus
+
 
 import pandas as pd
 
@@ -15,22 +17,23 @@ import seaborn as sb
 
 from bson.decimal128 import Decimal128
 
+# ========================
+# MongoDB Atlas Connection
+# ========================
+username = "vedhadarshnisr"
+password = "airbnb123"
+cluster_url = "cluster0.otazxov.mongodb.net"
+encoded_username = quote_plus(username)
+encoded_password = quote_plus(password)
+
+connection = f"mongodb+srv://{encoded_username}:{encoded_password}@{cluster_url}/?retryWrites=true&w=majority&appName=Cluster0"
+client = MongoClient(connection)
+db = client.get_database("airbnb_data")
+col = db["listings"]
 
 
-#mongodb connection
-username=""
-password=""
-cluster_url="new.axgs8vt.mongodb.net"
-encoded_username=quote_plus(username)
-encoded_password=quote_plus(password)
-connection=f"mongodb+srv://{encoded_username}:{encoded_password}@{cluster_url}/?retryWrites=true&w=majority&appName=NEW"
-client=MongoClient(connection)
-db=client.get_database("sample_airbnb")
-col = db["listingsAndReviews"]
+# Data Retrieval from  MongoDB collection
 
-
-
-#data retrieval
 datas = []
 try:
     for document in col.find():
@@ -39,13 +42,12 @@ try:
             "Name": document.get("name"),
             "Description": document.get("description"),
             "Country": document.get("address", {}).get("country"),
-            "Longitude": document.get("address", {}).get("location", {}).get("coordinates", [])[0],
-            "Latitude": document.get("address", {}).get("location", {}).get("coordinates", [])[1],
+            "Longitude": document.get("address", {}).get("location", {}).get("coordinates", [None, None])[0],
+            "Latitude": document.get("address", {}).get("location", {}).get("coordinates", [None, None])[1],
             "Property_Type": document.get("property_type"),
             "Room_Type": document.get("room_type"),
             "Bed_Type": document.get("bed_type"),
             "Amentities": document.get("amenities", []),
-            "Room_Type": document['room_type'],
             "Minimum_Nights": document.get("minimum_nights"),
             "Maximum_Nights": document.get("maximum_nights"),
             "Cancellation_Policy": document.get("cancellation_policy"),
@@ -53,7 +55,7 @@ try:
             "Price": document.get("price"),
             "Host_Id": document.get("host", {}).get("host_id"),
             "Host_Name": document.get("host", {}).get("host_name"),
-            'Listing URL':document['listing_url'],
+            "Listing URL": document.get("listing_url"),
             "Availability_30": document.get("availability", {}).get("availability_30"),
             "Availability_60": document.get("availability", {}).get("availability_60"),
             "Availability_90": document.get("availability", {}).get("availability_90"),
@@ -64,18 +66,15 @@ try:
         }
         datas.append(data)
 except Exception as e:
-    print("An error occurred:", e)
+    print("An error occurred while retrieving data from MongoDB:", e)
+
+
+# DataFrame Setup
 
 df = pd.DataFrame(datas)
-
-
-
-duplicate_rows = df[df.duplicated(subset=['Id'])]  
-df.reset_index(drop=True,inplace=True)
-
-
-
-df.to_csv("airbnb_cleaned.csv",index=False)
+df.drop_duplicates(subset=['Id'], inplace=True)
+df.reset_index(drop=True, inplace=True)
+df.to_csv("airbnb_cleaned.csv", index=False)
 
 
 
@@ -208,18 +207,16 @@ st.set_page_config(page_title="Airbnb",
 
 
 
-img = Image.open(r"C:\My Setups\airbnbanalysis\i1.png")
+img = Image.open(r"/Users/ayushii/Desktop/AirBnB/Renting-out-on-Air-BnB-1080x675.jpg")
 img = img.resize((350, 150))  
-img.save(r"C:\My Setups\airbnbanalysis\resized_i1.png")
+img.save(r"/Users/ayushii/Desktop/AirBnB/resized_i1.png")
+
 with st.sidebar:
-    st.image(r"C:\My Setups\airbnbanalysis\resized_i1.png")
+    st.image("i1.png") # Display i1.png directly here (ensure i1.png is in the same directory as your script)
     selected=option_menu("",
-            ["Home","Property","Locations","Analysis","Tableau Dashboard"],
-            icons=["house","building","map","filter","table"],
+            ["Home","Property","Locations","Analysis"],
+            icons=["house","building","map","filter"],
             orientation="vertical")
-
-
-
 if selected=="Home":
     airbnb_url = "https://www.airbnb.com"
     st.markdown(f"""
@@ -255,58 +252,68 @@ if selected=="Home":
                         <p>Airbnb operates through a website and mobile app that allow users to search for accommodations and experiences, book them directly, and communicate with hosts.</p>
                     </div>   
                     ''', unsafe_allow_html=True)
+# Check what's coming from MongoDB
+df = pd.DataFrame(list(col.find()))
 
-    choropleth_data = df[["Country", "Latitude", "Longitude"]]
-    choropleth_data.dropna(subset=["Country", "Latitude", "Longitude"], inplace=True)
-    fig = px.scatter_geo(
-        choropleth_data,
-        locations="Country",  
-        hover_name="Country", 
-        locationmode='country names', 
-        projection="natural earth", 
-        title="World Wide Airbnb",
-        size_max=50 
-    )   
-    st.plotly_chart(fig, use_container_width=True)
 
-    def get_base64_of_bin_file(bin_file):
-        """Reads a binary file and returns its Base64-encoded string."""
-        with open(bin_file, 'rb') as f:
-            data = f.read()
-        return base64.b64encode(data).decode()
+# ✅ Flatten nested fields to new columns
+df["Country"] = df["address"].apply(lambda x: x.get("country") if isinstance(x, dict) else None)
+df["Latitude"] = df["location"].apply(lambda x: x.get("latitude") if isinstance(x, dict) else None)
+df["Longitude"] = df["location"].apply(lambda x: x.get("longitude") if isinstance(x, dict) else None)
 
-    #background image
-    background_image_path = r'C:\My Setups\airbnbanalysis\i3.jpg'
+# ✅ Now build the choropleth
+choropleth_data = df[["Country", "Latitude", "Longitude"]].dropna()
 
-    #Base64-encoded image
-    base64_image = get_base64_of_bin_file(background_image_path)
+fig = px.scatter_geo(
+    choropleth_data,
+    locations="Country",
+    hover_name="Country",
+    locationmode='country names',
+    projection="natural earth",
+    title="World Wide Airbnb",
+    size_max=50
+)
+st.plotly_chart(fig, use_container_width=True)
 
-    page_bg_img = f"""
-    <style>
-    [data-testid="stAppViewContainer"] {{
-        background-image: url("data:image/jpeg;base64,{base64_image}");
-        background-size: cover;
-        background-repeat: no-repeat;
-        background-attachment: fixed;
-    }}
-    [data-testid="stAppViewContainer"]::before {{
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.3);  /* Black overlay with 30% opacity */
-    z-index: 1;
-    }}
 
-    [data-testid="stAppViewContainer"] > * {{
-        position: relative;
-        z-index: 2;
-    }}
-    </style>
-    """
-    st.markdown(page_bg_img, unsafe_allow_html=True)
+def get_base64_of_bin_file(bin_file):
+    """Reads a binary file and returns its Base64-encoded string."""
+    with open(bin_file, 'rb') as f:
+        data = f.read()
+    return base64.b64encode(data).decode()
+
+#background image
+background_image_path = 'airbnb1.jpg'  # Path to your background image file
+
+#Base64-encoded image
+base64_image = get_base64_of_bin_file(background_image_path)
+
+page_bg_img = f"""
+<style>
+[data-testid="stAppViewContainer"] {{
+    background-image: url("data:image/jpeg;base64,{base64_image}");
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+}}
+[data-testid="stAppViewContainer"]::before {{
+content: "";
+position: absolute;
+top: 0;
+left: 0;
+width: 100%;
+height: 100%;
+background: rgba(0, 0, 0, 0.3);  /* Black overlay with 30% opacity */
+z-index: 1;
+}}
+
+[data-testid="stAppViewContainer"] > * {{
+    position: relative;
+    z-index: 2;
+}}
+</style>
+"""
+st.markdown(page_bg_img, unsafe_allow_html=True)
 
 
 
@@ -397,7 +404,7 @@ elif selected=="Locations":
 
 
     if st.button("Total Airbnb Listing"):
-        room_type_counts = df['Room_Type'].value_counts().reset_index()
+        room_type_counts = df['room_type'].value_counts().reset_index()
         room_type_counts.columns = ['Room Type', 'Total Listings']
 
         fig = px.pie(room_type_counts, values='Total Listings', names='Room Type', title='Total Airbnb Listings in Each Room Type')
@@ -471,7 +478,4 @@ elif selected=="Analysis":
         st.dataframe(df3)
     
 
-           
-elif selected=="Tableau Dashboard":
-    tableau_url="https://public.tableau.com/app/profile/geeth.s/vizzes"
-    st.markdown(f'[View Tableau Dashboard]({tableau_url})', unsafe_allow_html=True)
+
